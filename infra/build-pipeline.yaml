@@ -230,7 +230,7 @@ Resources:
         ComputeType: BUILD_GENERAL1_SMALL
         Image: aws/codebuild/standard:7.0
         Type: LINUX_CONTAINER
-      Source:
+          Source:
         Type: CODEPIPELINE
         BuildSpec: |
           version: 0.2
@@ -246,6 +246,7 @@ Resources:
                 - echo "Scanning for vulnerabilities..."
                 - trivy fs --severity HIGH,CRITICAL --exit-code 0 --no-progress .
                 - echo "Running tests..."
+                - chmod +x mvnw
                 - ./mvnw test
           artifacts:
             files: '**/*'
