@@ -1,14 +1,12 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: >-
-  CI/CD Pipeline for Gateway Service - Build JAR and push Docker image to ECR
-  Steps: 1) Get Code, 2) Scan & Test, 3) Build JAR, 4) Build Docker & Push to ECR
+Description: 'CI/CD Pipeline for Gateway Service - Build JAR and push Docker image to ECR'
 
 Parameters:
   Namespace:
     Type: String
     Description: Namespace for resource organization
     Default: PSGW
-    AllowedPattern: ^[a-z0-9-]+$
+    AllowedPattern: ^[A-Za-z0-9-]+$
   
   AppName:
     Type: String
