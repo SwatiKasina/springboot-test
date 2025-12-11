@@ -1,0 +1,396 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  CI/CD Pipeline for Gateway Service - Build JAR and push Docker image to ECR
+  Steps: 1) Get Code, 2) Scan & Test, 3) Build JAR, 4) Build Docker & Push to ECR
+
+# ===========================================================================
+# Common Tags Definition - Define once, use everywhere
+# ===========================================================================
+# All resources in this template use these common tags via YAML anchors.
+# 
+# To add a new tag to ALL resources:
+# 1. Add the new tag to the list below (e.g., - Key: Environment, Value: dev)
+# 2. Deploy the updated template
+# 3. All resources will automatically get the new tag
+#
+# To use these tags in a resource: Tags: *common-tags
+# ===========================================================================
+x-common-tags: &common-tags
+  - Key: Namespace
+    Value: !Ref Namespace
+  - Key: AppName
+    Value: !Ref AppName
+  - Key: ManagedBy
+    Value: CloudFormation
+  - Key: Project
+    Value: Gateway-Service-Pipeline
+
+Parameters:
+  Namespace:
+    Type: String
+    Description: Namespace for resource organization
+    Default: PSGW
+    AllowedPattern: ^[a-z0-9-]+$
+  
+  AppName:
+    Type: String
+    Description: Application name
+    Default: gateway-service
+    AllowedPattern: ^[a-z0-9-]+$
+  
+  GitHubOwner:
+    Type: String
+    Description: GitHub Organization or User
+  
+  GitHubRepo:
+    Type: String
+    Description: GitHub Repository Name
+  
+  GitHubBranch:
+    Type: String
+    Default: main
+    Description: Branch to trigger the pipeline
+  
+  CodeStarConnectionArn:
+    Type: String
+    Description: ARN of the CodeStar Connection for GitHub
+
+Resources:
+  # -------------------------------------------------------------------------
+  # KMS Key
+  # -------------------------------------------------------------------------
+  ArtifactKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub ${Namespace}-${AppName} Pipeline Artifacts Key
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
+            Action: kms:*
+            Resource: '*'
+      Tags: *common-tags
+
+  # -------------------------------------------------------------------------
+  # S3 Bucket
+  # -------------------------------------------------------------------------
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${Namespace}-${AppName}-artifacts-${AWS::Region}-${AWS::AccountId}
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Ref ArtifactKey
+      Tags: *common-tags
+
+  # -------------------------------------------------------------------------
+  # ECR Repository (Created Dynamically)
+  # -------------------------------------------------------------------------
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub ${Namespace}/${AppName}
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep last 10 images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 10
+                },
+                "action": {
+                  "type": "expire"
+                }
+              }
+            ]
+          }
+      Tags: *common-tags
+
+  # -------------------------------------------------------------------------
+  # IAM Role for Pipeline
+  # -------------------------------------------------------------------------
+  PipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${Namespace}-${AppName}-PipelineRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSCodePipeline_FullAccess
+      Policies:
+        - PolicyName: PipelineAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:*
+                  - codebuild:*
+                  - codestar-connections:UseConnection
+                  - kms:*
+                Resource: '*'
+      Tags: *common-tags
+
+  # -------------------------------------------------------------------------
+  # IAM Role for CodeBuild
+  # -------------------------------------------------------------------------
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${Namespace}-${AppName}-CodeBuildRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser
+      Policies:
+        - PolicyName: CodeBuildAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:*
+                  - s3:*
+                  - ecr:*
+                  - kms:*
+                  - codestar-connections:UseConnection
+                Resource: '*'
+      Tags: *common-tags
+
+  # -------------------------------------------------------------------------
+  # Log Group
+  # -------------------------------------------------------------------------
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/codebuild/${Namespace}-${AppName}
+      RetentionInDays: 7
+      Tags: *common-tags
+
+  # -------------------------------------------------------------------------
+  # Step 2: Scan & Test
+  # -------------------------------------------------------------------------
+  ScanAndTestProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub ${Namespace}-${AppName}-ScanTest
+      Description: Scan for vulnerabilities and run tests
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+        Type: LINUX_CONTAINER
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            pre_build:
+              commands:
+                - echo "Installing Trivy scanner..."
+                - wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | apt-key add -
+                - echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | tee -a /etc/apt/sources.list.d/trivy.list
+                - apt-get update && apt-get install -y trivy
+            build:
+              commands:
+                - echo "Scanning for vulnerabilities..."
+                - trivy fs --severity HIGH,CRITICAL --exit-code 0 --no-progress .
+                - echo "Running tests..."
+                - ./mvnw test
+          artifacts:
+            files: '**/*'
+          cache:
+            paths: '/root/.m2/**/*'
+      Tags: *common-tags
+
+  # -------------------------------------------------------------------------
+  # Step 3: Build JAR
+  # -------------------------------------------------------------------------
+  BuildJarProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub ${Namespace}-${AppName}-BuildJar
+      Description: Build JAR file
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+        Type: LINUX_CONTAINER
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            build:
+              commands:
+                - echo "Getting version from pom.xml..."
+                - export APP_VERSION=$(grep -oPm1 "(?<=<version>)[^<]+" pom.xml | head -1)
+                - echo "Building JAR version $APP_VERSION"
+                - ./mvnw clean package -DskipTests
+                - echo $APP_VERSION > app-version.txt
+                - echo "JAR built successfully!"
+          artifacts:
+            files:
+              - 'target/*.jar'
+              - 'Dockerfile'
+              - 'app-version.txt'
+          cache:
+            paths: '/root/.m2/**/*'
+      Tags: *common-tags
+
+  # -------------------------------------------------------------------------
+  # Step 4: Build Docker & Push to ECR
+  # -------------------------------------------------------------------------
+  DockerBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub ${Namespace}-${AppName}-Docker
+      Description: Build Docker image and push to ECR
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+        Type: LINUX_CONTAINER
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: ECR_REPOSITORY_NAME
+            Value: !Sub ${Namespace}/${AppName}
+          - Name: AWS_ACCOUNT_ID
+            Value: !Ref AWS::AccountId
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            pre_build:
+              commands:
+                - export APP_VERSION=$(cat app-version.txt)
+                - echo "Building Docker image version $APP_VERSION"
+                - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+            build:
+              commands:
+                - docker build -t $ECR_REPOSITORY_NAME:$APP_VERSION .
+                - docker tag $ECR_REPOSITORY_NAME:$APP_VERSION $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:$APP_VERSION
+                - docker tag $ECR_REPOSITORY_NAME:$APP_VERSION $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:latest
+            post_build:
+              commands:
+                - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:$APP_VERSION
+                - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:latest
+                - echo $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:$APP_VERSION > image-uri.txt
+          artifacts:
+            files: image-uri.txt
+      Tags: *common-tags
+
+  # -------------------------------------------------------------------------
+  # Pipeline
+  # -------------------------------------------------------------------------
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Sub ${Namespace}-${AppName}-Pipeline
+      RoleArn: !GetAtt PipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+        EncryptionKey:
+          Id: !Ref ArtifactKey
+          Type: KMS
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: GitHubSource
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: '1'
+              Configuration:
+                ConnectionArn: !Ref CodeStarConnectionArn
+                FullRepositoryId: !Sub ${GitHubOwner}/${GitHubRepo}
+                BranchName: !Ref GitHubBranch
+              OutputArtifacts:
+                - Name: SourceOutput
+
+        - Name: ScanAndTest
+          Actions:
+            - Name: ScanTest
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref ScanAndTestProject
+              InputArtifacts:
+                - Name: SourceOutput
+              OutputArtifacts:
+                - Name: TestedOutput
+
+        - Name: BuildJar
+          Actions:
+            - Name: BuildJar
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref BuildJarProject
+              InputArtifacts:
+                - Name: TestedOutput
+              OutputArtifacts:
+                - Name: JarOutput
+
+        - Name: DockerAndECR
+          Actions:
+            - Name: BuildPushDocker
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref DockerBuildProject
+              InputArtifacts:
+                - Name: JarOutput
+              OutputArtifacts:
+                - Name: ImageOutput
+      Tags: *common-tags
+
+Outputs:
+  PipelineUrl:
+    Value: !Sub https://${AWS::Region}.console.aws.amazon.com/codesuite/codepipeline/pipelines/${Pipeline}/view
+  
+  ECRRepositoryUri:
+    Value: !GetAtt ECRRepository.RepositoryUri
+    Description: !Sub ECR Repository URI - ${Namespace}/${AppName}
