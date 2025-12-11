@@ -5,8 +5,8 @@ Parameters:
   Namespace:
     Type: String
     Description: Namespace for resource organization
-    Default: PSGW
-    AllowedPattern: ^[A-Za-z0-9-]+$
+    Default: psgw
+    AllowedPattern: ^[a-z0-9-]+$
   
   AppName:
     Type: String
@@ -327,6 +327,8 @@ Resources:
             Value: !Sub ${Namespace}/${AppName}
           - Name: AWS_ACCOUNT_ID
             Value: !Ref AWS::AccountId
+          - Name: BUILD_BRANCH
+            Value: !Ref GitHubBranch
       Source:
         Type: CODEPIPELINE
         BuildSpec: |
@@ -335,18 +337,21 @@ Resources:
             pre_build:
               commands:
                 - export APP_VERSION=$(cat app-version.txt)
-                - echo "Building Docker image version $APP_VERSION"
+                - export COMMIT_ID=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c1-7)
+                - export BRANCH_NAME=${BUILD_BRANCH##*/}
+                - export IMAGE_TAG=${BRANCH_NAME}-${COMMIT_ID}
+                - echo "Building Docker image tag $IMAGE_TAG (branch: $BRANCH_NAME, commit: $COMMIT_ID, app version: $APP_VERSION)"
                 - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
             build:
               commands:
-                - docker build -t $ECR_REPOSITORY_NAME:$APP_VERSION .
-                - docker tag $ECR_REPOSITORY_NAME:$APP_VERSION $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:$APP_VERSION
-                - docker tag $ECR_REPOSITORY_NAME:$APP_VERSION $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:latest
+                - docker build -t $ECR_REPOSITORY_NAME:$IMAGE_TAG .
+                - docker tag $ECR_REPOSITORY_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:$IMAGE_TAG
+                - docker tag $ECR_REPOSITORY_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:latest
             post_build:
               commands:
-                - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:$APP_VERSION
+                - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:$IMAGE_TAG
                 - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:latest
-                - echo $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:$APP_VERSION > image-uri.txt
+                - echo $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:$IMAGE_TAG > image-uri.txt
           artifacts:
             files: image-uri.txt
       Tags:
@@ -445,8 +450,9 @@ Resources:
 
 Outputs:
   PipelineUrl:
+    Description: URL to access the CodePipeline in AWS Console
     Value: !Sub https://${AWS::Region}.console.aws.amazon.com/codesuite/codepipeline/pipelines/${Pipeline}/view
   
   ECRRepositoryUri:
+    Description: ECR Repository URI for Docker images
     Value: !GetAtt ECRRepository.RepositoryUri
-    Description: !Sub ECR Repository URI - ${Namespace}/${AppName}
