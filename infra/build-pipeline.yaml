@@ -3,28 +3,6 @@ Description: >-
   CI/CD Pipeline for Gateway Service - Build JAR and push Docker image to ECR
   Steps: 1) Get Code, 2) Scan & Test, 3) Build JAR, 4) Build Docker & Push to ECR
 
-# ===========================================================================
-# Common Tags Definition - Define once, use everywhere
-# ===========================================================================
-# All resources in this template use these common tags via YAML anchors.
-# 
-# To add a new tag to ALL resources:
-# 1. Add the new tag to the list below (e.g., - Key: Environment, Value: dev)
-# 2. Deploy the updated template
-# 3. All resources will automatically get the new tag
-#
-# To use these tags in a resource: Tags: *common-tags
-# ===========================================================================
-x-common-tags: &common-tags
-  - Key: Namespace
-    Value: !Ref Namespace
-  - Key: AppName
-    Value: !Ref AppName
-  - Key: ManagedBy
-    Value: CloudFormation
-  - Key: Project
-    Value: Gateway-Service-Pipeline
-
 Parameters:
   Namespace:
     Type: String
@@ -73,7 +51,15 @@ Resources:
               AWS: !Sub arn:aws:iam::${AWS::AccountId}:root
             Action: kms:*
             Resource: '*'
-      Tags: *common-tags
+      Tags:
+        - Key: Namespace
+          Value: !Ref Namespace
+        - Key: AppName
+          Value: !Ref AppName
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: Project
+          Value: Gateway-Service-Pipeline
 
   # -------------------------------------------------------------------------
   # S3 Bucket
@@ -89,7 +75,15 @@ Resources:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: aws:kms
               KMSMasterKeyID: !Ref ArtifactKey
-      Tags: *common-tags
+      Tags:
+        - Key: Namespace
+          Value: !Ref Namespace
+        - Key: AppName
+          Value: !Ref AppName
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: Project
+          Value: Gateway-Service-Pipeline
 
   # -------------------------------------------------------------------------
   # ECR Repository (Created Dynamically)
@@ -118,7 +112,15 @@ Resources:
               }
             ]
           }
-      Tags: *common-tags
+      Tags:
+        - Key: Namespace
+          Value: !Ref Namespace
+        - Key: AppName
+          Value: !Ref AppName
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: Project
+          Value: Gateway-Service-Pipeline
 
   # -------------------------------------------------------------------------
   # IAM Role for Pipeline
@@ -148,7 +150,15 @@ Resources:
                   - codestar-connections:UseConnection
                   - kms:*
                 Resource: '*'
-      Tags: *common-tags
+      Tags:
+        - Key: Namespace
+          Value: !Ref Namespace
+        - Key: AppName
+          Value: !Ref AppName
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: Project
+          Value: Gateway-Service-Pipeline
 
   # -------------------------------------------------------------------------
   # IAM Role for CodeBuild
@@ -179,7 +189,15 @@ Resources:
                   - kms:*
                   - codestar-connections:UseConnection
                 Resource: '*'
-      Tags: *common-tags
+      Tags:
+        - Key: Namespace
+          Value: !Ref Namespace
+        - Key: AppName
+          Value: !Ref AppName
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: Project
+          Value: Gateway-Service-Pipeline
 
   # -------------------------------------------------------------------------
   # Log Group
@@ -189,7 +207,15 @@ Resources:
     Properties:
       LogGroupName: !Sub /aws/codebuild/${Namespace}-${AppName}
       RetentionInDays: 7
-      Tags: *common-tags
+      Tags:
+        - Key: Namespace
+          Value: !Ref Namespace
+        - Key: AppName
+          Value: !Ref AppName
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: Project
+          Value: Gateway-Service-Pipeline
 
   # -------------------------------------------------------------------------
   # Step 2: Scan & Test
@@ -227,7 +253,15 @@ Resources:
             files: '**/*'
           cache:
             paths: '/root/.m2/**/*'
-      Tags: *common-tags
+      Tags:
+        - Key: Namespace
+          Value: !Ref Namespace
+        - Key: AppName
+          Value: !Ref AppName
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: Project
+          Value: Gateway-Service-Pipeline
 
   # -------------------------------------------------------------------------
   # Step 3: Build JAR
@@ -264,7 +298,15 @@ Resources:
               - 'app-version.txt'
           cache:
             paths: '/root/.m2/**/*'
-      Tags: *common-tags
+      Tags:
+        - Key: Namespace
+          Value: !Ref Namespace
+        - Key: AppName
+          Value: !Ref AppName
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: Project
+          Value: Gateway-Service-Pipeline
 
   # -------------------------------------------------------------------------
   # Step 4: Build Docker & Push to ECR
@@ -309,7 +351,15 @@ Resources:
                 - echo $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:$APP_VERSION > image-uri.txt
           artifacts:
             files: image-uri.txt
-      Tags: *common-tags
+      Tags:
+        - Key: Namespace
+          Value: !Ref Namespace
+        - Key: AppName
+          Value: !Ref AppName
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: Project
+          Value: Gateway-Service-Pipeline
 
   # -------------------------------------------------------------------------
   # Pipeline
@@ -385,7 +435,15 @@ Resources:
                 - Name: JarOutput
               OutputArtifacts:
                 - Name: ImageOutput
-      Tags: *common-tags
+      Tags:
+        - Key: Namespace
+          Value: !Ref Namespace
+        - Key: AppName
+          Value: !Ref AppName
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: Project
+          Value: Gateway-Service-Pipeline
 
 Outputs:
   PipelineUrl:
