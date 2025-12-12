@@ -2,16 +2,11 @@ FROM public.ecr.aws/amazoncorretto/amazoncorretto:17-al2023
 
 WORKDIR /app
 
-# Create a non-root user
-RUN useradd -r -u 1000 spring
-
+# Copy the pre-built JAR from the pipeline
 COPY target/gateway-service-*.jar app.jar
 
-# Give ownership to the non-root user
-RUN chown spring:spring app.jar
-
-USER spring
-
+# Expose application port
 EXPOSE 8080
 
+# Run the application (using the default user from the base image)
 ENTRYPOINT ["java", "-jar", "app.jar"]
