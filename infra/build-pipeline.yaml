@@ -337,19 +337,22 @@ Resources:
           phases:
             pre_build:
               commands:
+                - echo "Reading app version from app-version.txt"
                 - export APP_VERSION=$(cat app-version.txt)
                 - export COMMIT_ID=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c1-7)
-                - export BRANCH_NAME=${BUILD_BRANCH##*/}
-                - export IMAGE_TAG="$BRANCH_NAME-$COMMIT_ID"
-                - echo "Building Docker image tag $IMAGE_TAG (branch: $BRANCH_NAME, commit: $COMMIT_ID, app version: $APP_VERSION)"
+                - export BRANCH_NAME="${BUILD_BRANCH##*/}"
+                - export IMAGE_TAG="${BRANCH_NAME}-${COMMIT_ID}"
+                - echo "Building Docker image tag ${IMAGE_TAG} (branch ${BRANCH_NAME}, commit ${COMMIT_ID}, app version ${APP_VERSION})"
                 - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
             build:
               commands:
+                - echo "Running docker build for ${ECR_REPOSITORY_NAME}:${IMAGE_TAG}"
                 - docker build -t $ECR_REPOSITORY_NAME:$IMAGE_TAG .
                 - docker tag $ECR_REPOSITORY_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:$IMAGE_TAG
                 - docker tag $ECR_REPOSITORY_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:latest
             post_build:
               commands:
+                - echo "Pushing Docker image to ECR..."
                 - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:$IMAGE_TAG
                 - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:latest
                 - echo $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$ECR_REPOSITORY_NAME:$IMAGE_TAG > image-uri.txt
