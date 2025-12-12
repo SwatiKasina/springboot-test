@@ -339,7 +339,7 @@ Resources:
               commands:
                 - echo "Reading app version from app-version.txt"
                 - export APP_VERSION=$(cat app-version.txt)
-                - export COMMIT_ID=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c1-7)
+                - if [ -n "$PIPELINE_COMMIT_ID" ]; then export COMMIT_ID=$(echo "$PIPELINE_COMMIT_ID" | cut -c1-7); else export COMMIT_ID=$(echo "$CODEBUILD_RESOLVED_SOURCE_VERSION" | cut -c1-7); fi
                 - if [ -z "$COMMIT_ID" ]; then export COMMIT_ID="unknown"; fi
                 - export BRANCH_NAME="${BUILD_BRANCH##*/}"
                 - export IMAGE_TAG="${BRANCH_NAME}-${COMMIT_ID}"
@@ -439,6 +439,7 @@ Resources:
                 Version: '1'
               Configuration:
                 ProjectName: !Ref DockerBuildProject
+                EnvironmentVariables: '[{"name":"PIPELINE_COMMIT_ID","value":"#{SourceVariables.CommitId}","type":"PLAINTEXT"}]'
               InputArtifacts:
                 - Name: JarOutput
               OutputArtifacts:

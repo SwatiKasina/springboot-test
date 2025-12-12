@@ -1,7 +1,7 @@
 # Dockerfile for Spring Boot application with Alpine Linux
 # Expects pre-built JAR from CI/CD pipeline
 
-FROM eclipse-temurin:17-jre-alpine
+FROM public.ecr.aws/amazoncorretto/amazoncorretto:17-alpine-jdk
 WORKDIR /app
 
 # Install curl for healthcheck
