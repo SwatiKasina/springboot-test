@@ -245,9 +245,9 @@ Resources:
               commands:
                 - echo "Scanning for vulnerabilities..."
                 - trivy fs --severity HIGH,CRITICAL --exit-code 0 --no-progress .
-                - echo "Running tests..."
+                - echo "Running tests and code coverage check..."
                 - chmod +x mvnw
-                - ./mvnw test
+                - ./mvnw verify
           artifacts:
             files: '**/*'
           cache:
