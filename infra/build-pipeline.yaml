@@ -340,6 +340,7 @@ Resources:
                 - echo "Reading app version from app-version.txt"
                 - export APP_VERSION=$(cat app-version.txt)
                 - export COMMIT_ID=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c1-7)
+                - if [ -z "$COMMIT_ID" ]; then export COMMIT_ID="unknown"; fi
                 - export BRANCH_NAME="${BUILD_BRANCH##*/}"
                 - export IMAGE_TAG="${BRANCH_NAME}-${COMMIT_ID}"
                 - echo "Building Docker image tag ${IMAGE_TAG} (branch ${BRANCH_NAME}, commit ${COMMIT_ID}, app version ${APP_VERSION})"
