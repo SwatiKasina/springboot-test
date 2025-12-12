@@ -4,11 +4,12 @@
 FROM public.ecr.aws/amazoncorretto/amazoncorretto:17-al2023
 WORKDIR /app
 
-# Install curl for healthcheck
-RUN apk add --no-cache curl
+# Install curl for healthcheck (Amazon Linux 2023 uses dnf, not apk)
+RUN dnf install -y curl shadow-utils \
+    && dnf clean all
 
-# Create non-root user for security
-RUN addgroup -S spring && adduser -S spring -G spring
+# Create non-root user for security (Amazon Linux 2023 base image)
+RUN groupadd -r spring && useradd -r -g spring spring
 
 # Copy the pre-built JAR from pipeline
 COPY target/gateway-service-*.jar app.jar
