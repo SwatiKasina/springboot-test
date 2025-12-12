@@ -1,7 +1,7 @@
 # Dockerfile for Spring Boot application with Alpine Linux
 # Expects pre-built JAR from CI/CD pipeline
 
-FROM public.ecr.aws/amazoncorretto/amazoncorretto:17-alpine-jdk
+FROM public.ecr.aws/amazoncorretto/amazoncorretto:17-al2023
 WORKDIR /app
 
 # Install curl for healthcheck

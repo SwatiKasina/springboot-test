@@ -392,6 +392,7 @@ Resources:
                 Owner: AWS
                 Provider: CodeStarSourceConnection
                 Version: '1'
+              Namespace: SourceVariables
               Configuration:
                 ConnectionArn: !Ref CodeStarConnectionArn
                 FullRepositoryId: !Sub ${GitHubOwner}/${GitHubRepo}
@@ -409,6 +410,7 @@ Resources:
                 Version: '1'
               Configuration:
                 ProjectName: !Ref ScanAndTestProject
+                EnvironmentVariables: '[{"name":"PIPELINE_COMMIT_ID","value":"#{SourceVariables.CommitId}","type":"PLAINTEXT"}]'
               InputArtifacts:
                 - Name: SourceOutput
               OutputArtifacts:
@@ -424,6 +426,7 @@ Resources:
                 Version: '1'
               Configuration:
                 ProjectName: !Ref BuildJarProject
+                EnvironmentVariables: '[{"name":"PIPELINE_COMMIT_ID","value":"#{SourceVariables.CommitId}","type":"PLAINTEXT"}]'
               InputArtifacts:
                 - Name: TestedOutput
               OutputArtifacts:
